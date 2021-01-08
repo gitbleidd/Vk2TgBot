@@ -35,6 +35,8 @@ namespace TelegramBot
             botClient.OnMessage += BotOnMessage;
             botClient.StartReceiving();
 
+            Console.WriteLine("Bot started!");
+
             while (isBotOn)
             {
                 List<SqliteRelationTable> relationTable = SqliteHandler.GetFullSqliteTable();
@@ -141,6 +143,7 @@ namespace TelegramBot
                 }
             }
         }
+
         static void CheckNewPosts(VkToTgRelation vkToTgRelationItem)
         {
             int lastId = vkToTgRelationItem.LastPostId;
@@ -166,6 +169,7 @@ namespace TelegramBot
             // Записываем новый last id в бд.
             SqliteHandler.UpdateLastId(vkGroupName, lastId);
         }
+
         static string GetChannelName(int tgChannelId)
         {
             string channelName = null;
@@ -180,6 +184,7 @@ namespace TelegramBot
 
             return channelName;
         }
+
         static async void BotOnMessage(object sender, MessageEventArgs messageEventArgs)
         {
             var message = messageEventArgs.Message;
@@ -225,6 +230,9 @@ namespace TelegramBot
 
                         SqliteHandler.AddVkToTgRelation(vkGroupName, tgChannelId);
 
+                        await botClient.SendTextMessageAsync(chatId: message.Chat.Id,
+                                text: "Relation list updated.");
+
                         break;
                     }
 
@@ -247,6 +255,10 @@ namespace TelegramBot
                         }
 
                         SqliteHandler.RemoveVkToTgRelation(vkGroupName, tgChannelId);
+
+                        await botClient.SendTextMessageAsync(chatId: message.Chat.Id,
+                                text: "Relation list updated.");
+
                         break;
                     }
 

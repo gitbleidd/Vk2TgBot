@@ -9,7 +9,7 @@ namespace TelegramBot
     class SqliteHandler
     {
         static string dbName = "Vk2Tg.db";
-        static string dbPath = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) + dbName; // Бд лежит в папке с исполняемым файлом
+        static string dbPath = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) + "\\" + dbName; // Бд лежит в папке с исполняемым файлом
 
         // Создаем и инициализируем бд при необходимости.
         static SqliteHandler()
