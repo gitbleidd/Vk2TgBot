@@ -23,10 +23,10 @@ namespace TelegramBot
         static readonly string vkApiVersion = "5.21";
         static readonly string postsCountAtOne = "15";
 
-        static readonly int botSleepTime = 5; // Время сна в минутах.
+        static readonly TimeSpan botSleepTime = TimeSpan.FromMinutes(5.0); // Время сна в минутах.
 
         static SqliteHandler sqliteHandler;
-        static void Main()
+        static async Task Main()
         {
             botClient = new TelegramBotClient(tgBotToken);
 
@@ -43,36 +43,36 @@ namespace TelegramBot
 
                 if (relationTable.Count == 0)
                 {
-                    Thread.Sleep(1000 * 60 * botSleepTime);
+                    Thread.Sleep(botSleepTime);
                     return;
                 }
 
                 // Формируем список групп vk и соответвующих им телеграм каналов для
                 // последующей рассылки постов.
-                List<VkToTgRelation> dispatchingTable = new List<VkToTgRelation>();
-                dispatchingTable.Add(new VkToTgRelation(relationTable[0].VkGroupName, relationTable[0].TgChannelId, relationTable[0].LastPostId));
+                List<VkToTgRelation> VkToTgRelationTable = new List<VkToTgRelation>();
+                VkToTgRelationTable.Add(new VkToTgRelation(relationTable[0].VkGroupName, relationTable[0].TgChannelId, relationTable[0].LastPostId));
                 for (int i = 1; i < relationTable.Count; i++)
                 {
                     // Если текущей vk группы нет, добавить в список.
-                    if(relationTable[i].VkGroupName != dispatchingTable.Last().VkGroupName)
+                    if(relationTable[i].VkGroupName != VkToTgRelationTable.Last().VkGroupName)
                     {
-                        dispatchingTable.Add(new VkToTgRelation(relationTable[i].VkGroupName, relationTable[i].TgChannelId, relationTable[i].LastPostId));
+                        VkToTgRelationTable.Add(new VkToTgRelation(relationTable[i].VkGroupName, relationTable[i].TgChannelId, relationTable[i].LastPostId));
                     }
                     // Иначе добавить еще один канал для рассылки к этой vk группе.
                     else
                     {
-                        dispatchingTable.Last().AddTgChannelId(relationTable[i].TgChannelId);
+                        VkToTgRelationTable.Last().AddTgChannelId(relationTable[i].TgChannelId);
                     }
                 }
 
                 // Делаем рассылку из всех групп vk, если есть новые посты.
-                foreach (var item in dispatchingTable)
+                foreach (var item in VkToTgRelationTable)
                 {
-                    CheckNewPosts(item);
+                    await CheckNewPosts(item);
                 }
 
                 // Спим и ждем новых постов.
-                Thread.Sleep(1000 * 60 * botSleepTime);
+                Thread.Sleep(botSleepTime);
             }
 
             botClient.StopReceiving();
@@ -144,7 +144,7 @@ namespace TelegramBot
             }
         }
 
-        static void CheckNewPosts(VkToTgRelation vkToTgRelationItem)
+        static async Task CheckNewPosts(VkToTgRelation vkToTgRelationItem)
         {
             int lastId = vkToTgRelationItem.LastPostId;
             string vkGroupName = vkToTgRelationItem.VkGroupName;
@@ -152,7 +152,7 @@ namespace TelegramBot
             // Пробуем получить json от vk и распарсить его.
             try
             {
-                string responseBody = GetVkJsonAsync(vkGroupName).Result; // Получаем json ответ.
+                string responseBody = await GetVkJsonAsync(vkGroupName); // Получаем json ответ.
                 
                 // Парсим json файл и делаем рассылку.
                 if (responseBody != null)
@@ -198,7 +198,7 @@ namespace TelegramBot
                     await botClient.SendTextMessageAsync(chatId: message.Chat.Id, text:
                         "You send me Vk public name and Telegram channel id. " +
                         "You should add bot as administrator to your channel before start!\n" +
-                        "For example: \"/add meme_ntos 1234567890\"");
+                        "For example: /add meme_ntos 1234567890");
                     break;
 
                 case "/add":
