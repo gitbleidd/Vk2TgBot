@@ -9,6 +9,7 @@ Telegram бот, который отправляет посты из групп 
 ## Установка на Raspberry Pi 2+
 
 1. Установка .NET 5 SDK
+
 [Полная инструкция от Microsoft](https://dotnet.microsoft.com/download/dotnet/5.0 "Microsoft Download .NET 5.0")
 
 Для того, чтобы dotnet команды были всегда доступны, необходимо добавить путь к dotnet в конец shell profile:
