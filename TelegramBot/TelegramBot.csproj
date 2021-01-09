@@ -12,4 +12,11 @@
     <PackageReference Include="Telegram.Bot" Version="15.7.1" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-arm'">
+      <ContentWithTargetPath Include="EmbeddedResources\Sqlite\**">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <TargetPath>%(Filename)%(Extension)</TargetPath>
+      </ContentWithTargetPath>
+  </ItemGroup>
+
 </Project>
