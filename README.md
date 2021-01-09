@@ -42,6 +42,6 @@ dotnet publish -r linux-arm -c Release /p:PublishSingleFile=true --self-containe
 4. "/add PublicName TgChannelId" - Привязывает к Tg каналу группу ВК для рассылки. 
 5. "/remove PublicName TgChannelId" - Удаляет группу ВК из рассылки для Tg канала.
 
-# Дополнительно
+## Дополнительно
 
 Библиотека System.Data.SQLite изначально не поддерживает ARM, поэтому необходимо вручную сбилдить ее на устройстве - [полная инструкция](http://blog.wezeku.com/2016/10/09/using-system-data-sqlite-under-linux-and-mono/). Я сделал это уже заранее и при компилировании проекта под Linux-arm, необходимые файлы динамеские библиотеки добавятся к исполняемому файлу. 
