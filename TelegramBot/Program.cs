@@ -3,29 +3,26 @@ using System.Threading;
 using System.Threading.Tasks;
 using Telegram.Bot;
 using Telegram.Bot.Args;
-using System.Net.Http;
-using Newtonsoft.Json;
 using Telegram.Bot.Types.Enums;
 using System.Linq;
 using System.Collections.Generic;
 using ConsoleTables;
+
+using VkNet;
+using Telegram.Bot.Types;
 
 namespace TelegramBot
 {
     class Program
     {
         static TelegramBotClient botClient;
-        static bool isBotOn = true;
-        static readonly string tgBotToken = "";
-        static readonly string tgRootUser = "gitbleidd"; // Имя пользователя в tg, которому будет доступен бот.
+        static bool isBotOn = Config.IsBotOn;
+        static readonly string tgBotToken = Config.TgBotToken;
+        static readonly string tgRootUser = Config.TgRootUser; // Имя пользователя в tg, которому будет доступен бот.
 
-        static readonly string vkAccessToken = "";
-        static readonly string vkApiVersion = "5.21";
-        static readonly string postsCountAtOne = "15";
+        static readonly TimeSpan botSleepTime = Config.BotSleepTime; // Время сна в минутах.
 
-        static readonly TimeSpan botSleepTime = TimeSpan.FromMinutes(5.0); // Время сна в минутах.
-
-        static SqliteHandler sqliteHandler;
+        public static SqliteHandler sqliteHandler;
         static async Task Main()
         {
             botClient = new TelegramBotClient(tgBotToken);
@@ -41,9 +38,10 @@ namespace TelegramBot
             {
                 List<SqliteRelationTable> relationTable = SqliteHandler.GetFullSqliteTable();
 
+                // Если бот не содержит групп для обработки, то засыпает на заданное время.
                 if (relationTable.Count == 0)
                 {
-                    Thread.Sleep(botSleepTime);
+                    await Task.Delay(botSleepTime);
                     return;
                 }
 
@@ -78,96 +76,112 @@ namespace TelegramBot
             botClient.StopReceiving();
         }
 
-        static async Task<string> GetVkJsonAsync(string vkGroupName)
+        static async Task SendPostToTg(ParsedPost post, int tgChannelId)
         {
-            string vkWallURL = $"https://api.vk.com/method/wall.get?v={vkApiVersion}" + 
-                $"&domain={vkGroupName}&count={postsCountAtOne}&filter=owner&access_token={vkAccessToken}";
+            string botText = post.Text != null ? post.Text + "\n": ""; // Инициализируем с текстом, либо пустую строку.
 
-            using (HttpClient client = new HttpClient())
+            // 1. Отправляем твиттерский пост. 
+            // Телега сама создаст хорошее превью.
+            if (post.TwitterPostUrl != null)
             {
-                HttpResponseMessage response = await client.GetAsync(vkWallURL);
-                response.EnsureSuccessStatusCode();
-                string responseBody = await response.Content.ReadAsStringAsync();
-                return responseBody;
-            }
-        }
+                botText += $"<a href=\"{post.TwitterPostUrl}\">Twitter orignal post</a>\n";
+                botText += $"<a href=\"{post.VkPostUrl}\">Vk Post</a>";
 
-        static void SendPostsToTg(VkJson vkJson, string vkGroupName, ref int lastId, List<int> tgChannels)
-        {
-            var posts = vkJson.response.items.ToList();
-            posts.Reverse();
-
-            // Удаляем закрепленный пост.
-            if (posts.Last().is_pinned == 1)
-            {
-                posts.RemoveAt(posts.Count - 1);
+                await botClient.SendTextMessageAsync(
+                        "-100" + tgChannelId,
+                        text: botText,
+                        parseMode: ParseMode.Html
+                        );
             }
 
-            // Иницилазируем lastId.
-            if(lastId == 0)
+            // 2. Отправляем только текст.
+            else if (post.VkImagesUrl.Count == 0)
             {
-                lastId = posts.Last().id;
-                return;
-            }
-
-            // Если новых постов нет, выходим.
-            int n = posts.Count;
-            if (posts[n - 1].id <= lastId)
-            {
-                return;
-            }
-
-            // Отправляем новые посты во все tg каналы из списка.
-            for (int i = 0; i < n; i++)
-            {
-                if (posts[i].id > lastId)
-                {
-                    int vkGroupId = Math.Abs(posts[i].from_id); // id с минусом, поэтому берем модуль. (id на самом деле string в json)
-                    string vkWallUrl = $"https://vk.com/{vkGroupName}?w=wall-{vkGroupId}_{posts[i].id}";
-
-                    foreach (var tgChannelId in tgChannels)
+                if (post.YouTubeUrl.Count > 0 )
+                    for (int i = 0; i < post.YouTubeUrl.Count; i++)
                     {
-                        int attachments = 0;
-                        if (posts[i].attachments != null)
-                            attachments = posts[i].attachments.Length;
-
-                        botClient.SendTextMessageAsync(
-                            chatId: long.Parse("-100" + tgChannelId),
-                            text: 
-                            $"<a href=\"{vkWallUrl}\">VK Link</a>\n" +
-                            $"Attachments: {attachments} | Comments: {posts[i].comments.count}",
-                            parseMode: ParseMode.Html);
+                        botText += $"<a href=\"{post.YouTubeUrl[i]}\">YouTube Video {i + 1}</a>\n";
                     }
-                    lastId = posts[i].id;
-                    Thread.Sleep(50);
+                if (post.OtherSites.Count > 0)
+                    foreach (string siteUrl in post.OtherSites)
+                    {
+                        botText += $"{siteUrl}\n";
+                    }
+                botText += $"<a href=\"{post.VkPostUrl}\">Vk Post</a>";
+
+                await botClient.SendTextMessageAsync(
+                       "-100" + tgChannelId,
+                       text: botText,
+                       parseMode: ParseMode.Html
+                       );
+            }
+
+            // 3. Отправляем картинки.
+            else
+            {
+                if (post.VkImagesUrl.Count > 0)
+                {
+                    List<InputMediaPhoto> mediaPhoto = new List<InputMediaPhoto>();
+
+                    // Загружаем все картинки из поста.
+                    foreach (string img in post.VkImagesUrl)
+                    {
+                        mediaPhoto.Add(new InputMediaPhoto(img));
+                    }
+
+                    if (post.YouTubeUrl.Count > 0)
+                        for (int i = 0; i < post.YouTubeUrl.Count; i++)
+                        {
+                            botText += $"<a href=\"{post.YouTubeUrl[i]}\">YouTube Video {i + 1}</a>\n";
+                        }
+                    if (post.OtherSites.Count > 0)
+                        foreach (string siteUrl in post.OtherSites)
+                        {
+                            botText += $"{siteUrl}\n";
+                        }
+                    botText += $"<a href=\"{post.VkPostUrl}\">Vk Post</a>";
+
+                    mediaPhoto.First().Caption += botText;
+                    //TODO send group photo + links: Original post link, Attachment link 1 (2, 3, ... n)
+                    
+                    mediaPhoto.First().ParseMode = ParseMode.Html;
+                    await botClient.SendMediaGroupAsync(
+                            chatId: "-100" + tgChannelId,
+                            inputMedia: mediaPhoto
+                            );
                 }
             }
+            await Task.Delay(10);
         }
 
+        // Проверяем новые посты в одной из ВК групп и отпрвляем их по tg каналам.
         static async Task CheckNewPosts(VkToTgRelation vkToTgRelationItem)
         {
             int lastId = vkToTgRelationItem.LastPostId;
             string vkGroupName = vkToTgRelationItem.VkGroupName;
 
-            // Пробуем получить json от vk и распарсить его.
+            // Пробуем получить новые посты и отправить их.
             try
             {
-                string responseBody = await GetVkJsonAsync(vkGroupName); // Получаем json ответ.
-                
-                // Парсим json файл и делаем рассылку.
-                if (responseBody != null)
+                List<ParsedPost> parsedPosts = await VkParser.GetNewPosts(vkGroupName, lastId);
+
+                if (parsedPosts.Count > 0)
                 {
-                    VkJson vkJson = JsonConvert.DeserializeObject<VkJson>(responseBody);
-                    SendPostsToTg(vkJson, vkGroupName, ref lastId, vkToTgRelationItem.TgChannels);
+                    foreach (int tgChannelId in vkToTgRelationItem.TgChannels)
+                    {
+                        foreach (var post in parsedPosts)
+                        {
+                            await SendPostToTg(post, tgChannelId);
+
+                            SqliteHandler.UpdateLastId(vkGroupName, post.Id); // Записываем новый last id в бд.
+                        }
+                    }
                 }
             }
-            catch(Exception e)
+            catch (Exception e)
             {
                 Console.WriteLine(e.Message);
             }
-
-            // Записываем новый last id в бд.
-            SqliteHandler.UpdateLastId(vkGroupName, lastId);
         }
 
         static string GetChannelName(int tgChannelId)
